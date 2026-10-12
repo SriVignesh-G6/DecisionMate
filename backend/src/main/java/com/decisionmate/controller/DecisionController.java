@@ -8,6 +8,7 @@ import com.decisionmate.repository.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,16 +24,19 @@ public class DecisionController {
     private final CriterionRepository criteria;
     private final AlternativeRepository alternatives;
     private final ScoreRepository scores;
+    private final AppUserRepository users;
 
     public DecisionController(
             DecisionRepository decisions,
             CriterionRepository criteria,
             AlternativeRepository alternatives,
-            ScoreRepository scores) {
+            ScoreRepository scores,
+            AppUserRepository users) {
         this.decisions = decisions;
         this.criteria = criteria;
         this.alternatives = alternatives;
         this.scores = scores;
+        this.users = users;
     }
 
     @GetMapping("/health")
@@ -44,8 +48,10 @@ public class DecisionController {
     }
 
     @GetMapping("/decisions")
-    public List<Map<String, Object>> all() {
-        return decisions.findAll()
+    public List<Map<String, Object>> all(Authentication authentication) {
+        AppUser user = currentUser(authentication);
+
+        return decisions.findAllByOwner_Id(user.getId())
                 .stream()
                 .map(this::summary)
                 .toList();
@@ -54,40 +60,48 @@ public class DecisionController {
     @PostMapping("/decisions")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> create(
-            @Valid @RequestBody DecisionRequest request) {
-        return summary(
-                decisions.save(
-                        new Decision(
-                                request.title().trim(),
-                                request.description()
-                        )
-                )
+            @Valid @RequestBody DecisionRequest request,
+            Authentication authentication) {
+
+        AppUser user = currentUser(authentication);
+
+        Decision decision = new Decision(
+                request.title().trim(),
+                request.description()
         );
+        decision.setOwner(user);
+
+        return summary(decisions.save(decision));
     }
 
     @GetMapping("/decisions/{id}")
-    public Map<String, Object> get(@PathVariable Long id) {
-        return detail(findDecision(id));
+    public Map<String, Object> get(
+            @PathVariable Long id,
+            Authentication authentication) {
+        return detail(findDecision(id, currentUser(authentication)));
     }
 
     @PutMapping("/decisions/{id}")
     public Map<String, Object> update(
             @PathVariable Long id,
-            @Valid @RequestBody DecisionRequest request) {
+            @Valid @RequestBody DecisionRequest request,
+            Authentication authentication) {
 
-        Decision d = findDecision(id);
-        d.setTitle(request.title().trim());
-        d.setDescription(request.description());
+        Decision decision = findDecision(id, currentUser(authentication));
+        decision.setTitle(request.title().trim());
+        decision.setDescription(request.description());
 
-        return summary(decisions.save(d));
+        return summary(decisions.save(decision));
     }
 
-    // Delete scores and related records before deleting a decision.
     @DeleteMapping("/decisions/{id}")
     @Transactional
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        Decision d = findDecision(id);
+    public void delete(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        Decision decision = findDecision(id, currentUser(authentication));
 
         List<Alternative> decisionAlternatives =
                 alternatives.findByDecisionId(id);
@@ -95,97 +109,119 @@ public class DecisionController {
         List<Criterion> decisionCriteria =
                 criteria.findByDecisionId(id);
 
-        for (Alternative a : decisionAlternatives) {
-            scores.findByAlternativeId(a.getId())
+        for (Alternative alternative : decisionAlternatives) {
+            scores.findByAlternativeId(alternative.getId())
                     .forEach(scores::delete);
         }
 
-        for (Criterion c : decisionCriteria) {
-            scores.findByCriterionId(c.getId())
+        for (Criterion criterion : decisionCriteria) {
+            scores.findByCriterionId(criterion.getId())
                     .forEach(scores::delete);
         }
 
         alternatives.deleteAll(decisionAlternatives);
         criteria.deleteAll(decisionCriteria);
-        decisions.delete(d);
+        decisions.delete(decision);
     }
 
     @PostMapping("/decisions/{id}/criteria")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> addCriterion(
             @PathVariable Long id,
-            @Valid @RequestBody CriterionRequest request) {
+            @Valid @RequestBody CriterionRequest request,
+            Authentication authentication) {
 
-        Decision d = findDecision(id);
+        Decision decision = findDecision(id, currentUser(authentication));
 
-        Criterion c = criteria.save(
+        Criterion criterion = criteria.save(
                 new Criterion(
                         request.name().trim(),
                         request.weight(),
-                        d
+                        decision
                 )
         );
 
-        return criterionMap(c);
+        return criterionMap(criterion);
     }
 
     @DeleteMapping("/criteria/{id}")
+    @Transactional
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteCriterion(@PathVariable Long id) {
-        Criterion c = criteria.findById(id)
+    public void deleteCriterion(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        AppUser user = currentUser(authentication);
+
+        Criterion criterion = criteria.findById(id)
                 .orElseThrow(() -> notFound("Criterion"));
 
-        scores.findByCriterionId(id)
-                .forEach(scores::delete);
+        // Verify that the criterion belongs to this user's decision.
+        findDecision(criterion.getDecision().getId(), user);
 
-        criteria.delete(c);
+        scores.findByCriterionId(id).forEach(scores::delete);
+        criteria.delete(criterion);
     }
 
     @PostMapping("/decisions/{id}/alternatives")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> addAlternative(
             @PathVariable Long id,
-            @Valid @RequestBody AlternativeRequest request) {
+            @Valid @RequestBody AlternativeRequest request,
+            Authentication authentication) {
 
-        Alternative a = alternatives.save(
+        Decision decision = findDecision(id, currentUser(authentication));
+
+        Alternative alternative = alternatives.save(
                 new Alternative(
                         request.name().trim(),
                         request.description(),
-                        findDecision(id)
+                        decision
                 )
         );
 
-        return alternativeMap(a);
+        return alternativeMap(alternative);
     }
 
     @DeleteMapping("/alternatives/{id}")
+    @Transactional
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteAlternative(@PathVariable Long id) {
-        Alternative a = alternatives.findById(id)
+    public void deleteAlternative(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        AppUser user = currentUser(authentication);
+
+        Alternative alternative = alternatives.findById(id)
                 .orElseThrow(() -> notFound("Alternative"));
 
-        scores.findByAlternativeId(id)
-                .forEach(scores::delete);
+        // Verify ownership before deleting its scores or the alternative.
+        findDecision(alternative.getDecision().getId(), user);
 
-        alternatives.delete(a);
+        scores.findByAlternativeId(id).forEach(scores::delete);
+        alternatives.delete(alternative);
     }
 
     @PutMapping("/decisions/{decisionId}/scores")
     @Transactional
     public Map<String, Object> saveScore(
             @PathVariable Long decisionId,
-            @Valid @RequestBody ScoreRequest request) {
+            @Valid @RequestBody ScoreRequest request,
+            Authentication authentication) {
 
-        Decision d = findDecision(decisionId);
+        Decision decision = findDecision(
+                decisionId,
+                currentUser(authentication)
+        );
 
-        Alternative a = alternatives.findById(request.alternativeId())
+        Alternative alternative = alternatives.findById(request.alternativeId())
                 .orElseThrow(() -> notFound("Alternative"));
 
-        Criterion c = criteria.findById(request.criterionId())
+        Criterion criterion = criteria.findById(request.criterionId())
                 .orElseThrow(() -> notFound("Criterion"));
 
-        if (!a.getDecision().getId().equals(d.getId())
-                || !c.getDecision().getId().equals(d.getId())) {
+        if (!alternative.getDecision().getId().equals(decision.getId())
+                || !criterion.getDecision().getId().equals(decision.getId())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Alternative and criterion must belong to this decision"
@@ -193,59 +229,62 @@ public class DecisionController {
         }
 
         Score score = scores.findByAlternativeIdAndCriterionId(
-                        a.getId(), c.getId())
+                        alternative.getId(),
+                        criterion.getId())
                 .orElseGet(() ->
-                        new Score(a, c, request.score()));
+                        new Score(alternative, criterion, request.score()));
 
         score.setScoreValue(request.score());
-
         Score saved = scores.save(score);
 
         return Map.of(
-                "alternativeId", a.getId(),
-                "criterionId", c.getId(),
+                "alternativeId", alternative.getId(),
+                "criterionId", criterion.getId(),
                 "score", saved.getScoreValue()
         );
     }
 
     @GetMapping("/decisions/{id}/results")
-    public List<ResultRow> results(@PathVariable Long id) {
-        Decision d = findDecision(id);
+    public List<ResultRow> results(
+            @PathVariable Long id,
+            Authentication authentication) {
 
-        List<Criterion> cs =
-                criteria.findByDecisionId(d.getId());
+        Decision decision = findDecision(id, currentUser(authentication));
 
-        List<Alternative> as =
-                alternatives.findByDecisionId(d.getId());
+        List<Criterion> decisionCriteria =
+                criteria.findByDecisionId(decision.getId());
+
+        List<Alternative> decisionAlternatives =
+                alternatives.findByDecisionId(decision.getId());
 
         List<Score> allScores =
-                scores.findByAlternativeDecisionId(d.getId());
+                scores.findByAlternativeDecisionId(decision.getId());
 
         Map<String, Integer> scoreMap = allScores.stream()
                 .collect(Collectors.toMap(
-                        s -> s.getAlternative().getId()
-                                + ":" + s.getCriterion().getId(),
+                        score -> score.getAlternative().getId()
+                                + ":" + score.getCriterion().getId(),
                         Score::getScoreValue,
-                        (a, b) -> b
+                        (first, second) -> second
                 ));
 
-        double totalWeight = cs.stream()
+        double totalWeight = decisionCriteria.stream()
                 .mapToInt(Criterion::getWeight)
                 .sum();
 
         List<ResultRow> rows = new ArrayList<>();
 
-        for (Alternative a : as) {
+        for (Alternative alternative : decisionAlternatives) {
             double weighted = 0;
 
             if (totalWeight > 0) {
-                for (Criterion c : cs) {
+                for (Criterion criterion : decisionCriteria) {
                     Integer value = scoreMap.get(
-                            a.getId() + ":" + c.getId()
+                            alternative.getId() + ":" + criterion.getId()
                     );
 
                     if (value != null) {
-                        weighted += value * c.getWeight();
+                        weighted += value * criterion.getWeight();
                     }
                 }
             }
@@ -255,8 +294,8 @@ public class DecisionController {
                     : weighted / totalWeight;
 
             rows.add(new ResultRow(
-                    a.getId(),
-                    a.getName(),
+                    alternative.getId(),
+                    alternative.getName(),
                     Math.round(normalized * 100.0) / 100.0,
                     0
             ));
@@ -271,12 +310,12 @@ public class DecisionController {
         List<ResultRow> ranked = new ArrayList<>();
 
         for (int i = 0; i < rows.size(); i++) {
-            ResultRow r = rows.get(i);
+            ResultRow row = rows.get(i);
 
             ranked.add(new ResultRow(
-                    r.alternativeId(),
-                    r.alternativeName(),
-                    r.weightedScore(),
+                    row.alternativeId(),
+                    row.alternativeName(),
+                    row.weightedScore(),
                     i + 1
             ));
         }
@@ -284,8 +323,23 @@ public class DecisionController {
         return ranked;
     }
 
-    private Decision findDecision(Long id) {
-        return decisions.findById(id)
+    private AppUser currentUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Please log in"
+            );
+        }
+
+        return users.findByEmail(authentication.getName())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "User account not found"
+                ));
+    }
+
+    private Decision findDecision(Long id, AppUser user) {
+        return decisions.findByIdAndOwner_Id(id, user.getId())
                 .orElseThrow(() -> notFound("Decision"));
     }
 
@@ -296,78 +350,78 @@ public class DecisionController {
         );
     }
 
-    private Map<String, Object> summary(Decision d) {
-        Map<String, Object> m = new LinkedHashMap<>();
+    private Map<String, Object> summary(Decision decision) {
+        Map<String, Object> map = new LinkedHashMap<>();
 
-        m.put("id", d.getId());
-        m.put("title", d.getTitle());
-        m.put("description", d.getDescription());
-        m.put("createdAt", d.getCreatedAt());
-        m.put(
+        map.put("id", decision.getId());
+        map.put("title", decision.getTitle());
+        map.put("description", decision.getDescription());
+        map.put("createdAt", decision.getCreatedAt());
+        map.put(
                 "criteriaCount",
-                criteria.findByDecisionId(d.getId()).size()
+                criteria.findByDecisionId(decision.getId()).size()
         );
-        m.put(
+        map.put(
                 "alternativesCount",
-                alternatives.findByDecisionId(d.getId()).size()
+                alternatives.findByDecisionId(decision.getId()).size()
         );
 
-        return m;
+        return map;
     }
 
-    private Map<String, Object> detail(Decision d) {
-        Map<String, Object> m = summary(d);
+    private Map<String, Object> detail(Decision decision) {
+        Map<String, Object> map = summary(decision);
 
-        m.put(
+        map.put(
                 "criteria",
-                criteria.findByDecisionId(d.getId())
+                criteria.findByDecisionId(decision.getId())
                         .stream()
                         .map(this::criterionMap)
                         .toList()
         );
 
-        m.put(
+        map.put(
                 "alternatives",
-                alternatives.findByDecisionId(d.getId())
+                alternatives.findByDecisionId(decision.getId())
                         .stream()
                         .map(this::alternativeMap)
                         .toList()
         );
 
-        m.put(
+        map.put(
                 "scores",
-                scores.findByAlternativeDecisionId(d.getId())
+                scores.findByAlternativeDecisionId(decision.getId())
                         .stream()
-                        .map(s -> Map.of(
+                        .map(score -> Map.of(
                                 "alternativeId",
-                                s.getAlternative().getId(),
+                                score.getAlternative().getId(),
                                 "criterionId",
-                                s.getCriterion().getId(),
+                                score.getCriterion().getId(),
                                 "score",
-                                s.getScoreValue()
+                                score.getScoreValue()
                         ))
                         .toList()
         );
 
-        return m;
+        return map;
     }
 
-    private Map<String, Object> criterionMap(Criterion c) {
+    private Map<String, Object> criterionMap(Criterion criterion) {
         return Map.of(
-                "id", c.getId(),
-                "name", c.getName(),
-                "weight", c.getWeight()
+                "id", criterion.getId(),
+                "name", criterion.getName(),
+                "weight", criterion.getWeight()
         );
     }
 
-    private Map<String, Object> alternativeMap(Alternative a) {
-        Map<String, Object> m = new LinkedHashMap<>();
+    private Map<String, Object> alternativeMap(Alternative alternative) {
+        Map<String, Object> map = new LinkedHashMap<>();
 
-        m.put("id", a.getId());
-        m.put("name", a.getName());
-        m.put("description", a.getDescription());
+        map.put("id", alternative.getId());
+        map.put("name", alternative.getName());
+        map.put("description", alternative.getDescription());
 
-        return m;
+        return map;
     }
 
     public record DecisionRequest(

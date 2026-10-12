@@ -4,3 +4,108 @@
 @media(max-width:1150px){.page-content{padding:30px 28px 50px}.topbar{padding:0 28px}.decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-art{margin-right:0}.stat-card small{position:static;display:block;margin-top:7px}.stat-card{min-height:140px}}
 @media(max-width:850px){.sidebar{width:70px;padding:22px 10px}.brand{padding:0 5px 34px}.brand>div:last-child,.workspace-label,.nav-item:not(.selected),.nav-item{font-size:0;justify-content:center;gap:0}.brand-mark{flex-shrink:0}.brand strong,.brand span,.side-section-head,.side-list,.sidebar-bottom,.side-divider{display:none}.nav-item{height:43px;padding:0}.nav-item svg{width:19px;height:19px}.main{margin-left:70px;width:calc(100% - 70px)}.topbar{padding:0 20px}.page-content{padding:28px 20px 45px}.hero-row h1{font-size:32px}.hero-art{transform:scale(.8);transform-origin:right center;width:230px;margin-left:-25px}.stats-grid{gap:10px}.stat-card{padding:14px}.stat-card>strong{font-size:19px}.stat-card small{font-size:9px}.workspace-title-row h1{font-size:27px}}
 @media(max-width:600px){.topbar{height:60px;padding:0 14px}.topbar-right{font-size:0}.avatar{margin-left:4px}.page-content{padding:23px 14px 35px}.hero-row{min-height:auto;padding:8px 0 20px}.hero-row h1{font-size:29px}.hero-copy{font-size:12px}.hero-art{display:none}.stats-grid{grid-template-columns:1fr;gap:9px;margin:10px 0 30px}.stat-card{min-height:90px;padding:14px 15px 12px 61px}.stat-icon{position:absolute;left:14px;top:17px}.stat-label{font-size:10px}.stat-card>strong{font-size:18px}.stat-card small{margin-top:2px}.section-heading{align-items:flex-start}.section-heading h2{font-size:17px}.section-heading p{max-width:190px;line-height:1.5}.primary-btn{padding:10px 11px;font-size:11px}.decision-grid{grid-template-columns:1fr}.decision-card{padding:14px 15px 0}.card-desc{height:auto;min-height:18px}.tip-number{display:none}.stepper{padding:13px 10px;gap:6px}.step{gap:5px}.step>span{width:24px;height:24px}.step strong{font-size:9px}.step small{display:none}.panel{padding:16px 13px}.panel-heading h2{font-size:13px}.panel-heading p{font-size:10px;line-height:1.5}.inline-form{flex-wrap:wrap}.inline-form input{flex:1 1 100%}.weight-select{flex:1}.inline-form .primary-btn{margin-left:auto}.criteria-row,.alternative-row{gap:7px}.weight-meter{gap:2px}.weight-meter i{width:5px}.workspace-title-row{align-items:flex-start;flex-direction:column}.workspace-title-row .outline-btn{align-self:flex-start}.workspace-title-row h1{font-size:26px}.workspace-footer{align-items:flex-start;flex-direction:column}.winner-card{gap:9px;padding:12px}.winner-medal{width:37px;height:37px}.winner-card h3{font-size:14px}.winner-score{font-size:20px}.breadcrumb{gap:5px;font-size:10px}.breadcrumb strong{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.search-wrap{max-width:none}.modal{padding:20px}.side-decision-text{display:none}}
+
+/* Authentication screens */
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f7f8fc;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 430px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 36px;
+  background: #fff;
+  border: 1px solid #e9eaf2;
+  border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(35, 25, 75, 0.08);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.auth-brand h1,
+.auth-card h2 {
+  margin: 0;
+}
+
+.auth-brand p,
+.auth-subtitle {
+  margin: 6px 0 0;
+  color: #85869b;
+  font-size: 14px;
+}
+
+.auth-card > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #dedce9;
+  border-radius: 9px;
+  font: inherit;
+  outline-color: #7561d8;
+}
+
+.auth-submit {
+  width: 100%;
+  min-height: 46px;
+}
+
+.auth-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.auth-switch {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: #77758a;
+}
+
+.text-btn {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #6754c7;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #55546b;
+}
+
+.logout-btn {
+  margin-left: 8px;
+}
+
+@media (max-width: 520px) {
+  .auth-card {
+    padding: 24px;
+  }
+
+  .account-name {
+    display: none;
+  }
+}

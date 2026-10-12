@@ -4,6 +4,12 @@ import { ArrowLeft, ArrowUpRight, BarChart3, Check, ChevronRight, CircleHelp, Cl
 
 function App() {
   const [decisions, setDecisions] = useState([])
+const [user, setUser] = useState(null)
+const [authMode, setAuthMode] = useState('login')
+const [authName, setAuthName] = useState('')
+const [authEmail, setAuthEmail] = useState('')
+const [authPassword, setAuthPassword] = useState('')
+const [authBusy, setAuthBusy] = useState(false)
   const [activeId, setActiveId] = useState(null)
   const [detail, setDetail] = useState(null)
   const [results, setResults] = useState([])
@@ -21,13 +27,80 @@ function App() {
   const [alternativeName, setAlternativeName] = useState('')
   const [alternativeDescription, setAlternativeDescription] = useState('')
 
-  const refreshList = async () => setDecisions(await api.decisions())
+
+
+const submitAuth = async (e) => {
+  e.preventDefault()
+  setAuthBusy(true)
+  setError('')
+
+  try {
+    const account =
+      authMode === 'register'
+        ? await api.register({
+            name: authName.trim(),
+            email: authEmail.trim(),
+            password: authPassword,
+          })
+        : await api.login({
+            email: authEmail.trim(),
+            password: authPassword,
+          })
+
+    setUser(account)
+    setAuthPassword('')
+    setLoading(true)
+
+    const list = await api.decisions()
+    setDecisions(list)
+  } catch (err) {
+    setError(err.message)
+  } finally {
+    setAuthBusy(false)
+    setLoading(false)
+  }
+}
+
+const handleLogout = async () => {
+  try {
+    await api.logout()
+  } catch (err) {
+    setError(err.message)
+    return
+  }
+
+  setUser(null)
+  setDecisions([])
+  setActiveId(null)
+  setDetail(null)
+  setResults([])
+  setScoreGrid({})
+  setView('overview')
+  setError('')
+  setToast('')
+  setAuthEmail('')
+  setAuthPassword('')
+}
+const refreshList = async () => setDecisions(await api.decisions())
   const refreshDetail = async (id = activeId) => {
     if (!id) return
     const [d, r] = await Promise.all([api.decision(id), api.results(id)])
     setDetail(d); setResults(r)
   }
-  useEffect(() => { api.decisions().then(setDecisions).catch(e => setError(e.message)).finally(() => setLoading(false)) }, [])
+useEffect(() => {
+  api.me()
+    .then(async (currentUser) => {
+      setUser(currentUser)
+      const list = await api.decisions()
+      setDecisions(list)
+    })
+    .catch(() => {
+      setUser(null)
+    })
+    .finally(() => {
+      setLoading(false)
+    })
+}, [])
   useEffect(() => {
     if (!activeId) return
     setBusy(true); setError('')
@@ -75,6 +148,107 @@ function App() {
   const gridKey = (a, c) => `${a}:${c}`
   const currentGrid = scoreGrid[activeId] || {}
   const loadError = error && error.toLowerCase().includes('failed to fetch')
+  if (loading) {
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <div className="brand-mark"><Scale size={24} /></div>
+        <h2>DecisionMate</h2>
+        <p>Loading your workspace…</p>
+      </div>
+    </div>
+  )
+}
+
+if (!user) {
+  return (
+    <div className="auth-screen">
+      <form className="auth-card" onSubmit={submitAuth}>
+        <div className="auth-brand">
+          <div className="brand-mark"><Scale size={24} /></div>
+          <div>
+            <h1>DecisionMate</h1>
+            <p>Make better decisions with clarity.</p>
+          </div>
+        </div>
+
+        <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+        <p className="auth-subtitle">
+          {authMode === 'login'
+            ? 'Log in to access your private workspace.'
+            : 'Register to start your own private workspace.'}
+        </p>
+
+        {error && <div className="alert">{error}</div>}
+
+        {authMode === 'register' && (
+          <label>
+            Your name
+            <input
+              required
+              maxLength={100}
+              value={authName}
+              onChange={(e) => setAuthName(e.target.value)}
+              placeholder="Enter your name"
+            />
+          </label>
+        )}
+
+        <label>
+          Email address
+          <input
+            required
+            type="email"
+            maxLength={190}
+            autoComplete="email"
+            value={authEmail}
+            onChange={(e) => setAuthEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            required
+            type="password"
+            minLength={8}
+            maxLength={72}
+            autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            placeholder="At least 8 characters"
+          />
+        </label>
+
+        <button className="primary-btn auth-submit" type="submit" disabled={authBusy}>
+          {authBusy
+            ? 'Please wait…'
+            : authMode === 'login'
+              ? 'Log in'
+              : 'Create account'}
+        </button>
+
+        <p className="auth-switch">
+          {authMode === 'login'
+            ? "Don't have an account?"
+            : 'Already have an account?'}
+          {' '}
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login')
+              setError('')
+            }}
+          >
+            {authMode === 'login' ? 'Register' : 'Log in'}
+          </button>
+        </p>
+      </form>
+    </div>
+  )
+}
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -92,7 +266,10 @@ function App() {
     </aside>
 
     <main className="main">
-      <header className="topbar"><div className="breadcrumb"><span>Workspace</span><ChevronRight size={14}/><strong>{view === 'overview' ? 'Overview' : detail?.title || 'Decision builder'}</strong></div><div className="topbar-right"><span className="status-dot"/> All changes saved <div className="avatar">DM</div></div></header>
+      <header className="topbar"><div className="breadcrumb"><span>Workspace</span><ChevronRight size={14}/><strong>{view === 'overview' ? 'Overview' : detail?.title || 'Decision builder'}</strong></div><div className="topbar-right"><span className="status-dot"/> All changes saved <span className="account-name">{user?.name}</span>
+<button className="outline-btn logout-btn" onClick={handleLogout}>
+  Log out
+</button></div></header>
       <div className="page-content">
         {error && <div className="alert"><span>{loadError ? 'Cannot connect to the API. Start Spring Boot and check MySQL, then refresh.' : error}</span><button onClick={() => setError('')}><X size={16}/></button></div>}
         {loading ? <div className="loading"><div className="spinner"/>Loading your workspace…</div> : view === 'overview' || !activeId ? <>
